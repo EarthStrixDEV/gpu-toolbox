@@ -52,6 +52,9 @@ typedef nvmlReturn_t (*PFN_GetPowerMax)(nvmlDevice_t, unsigned int*, unsigned in
 // limit can actually be changed.
 typedef nvmlReturn_t (*PFN_GetPowerMgmtLimit)(nvmlDevice_t, unsigned int*);
 typedef nvmlReturn_t (*PFN_GetClock)(nvmlDevice_t, int, unsigned int*);
+// Highest clock the card will report for a domain - used as the 100% baseline
+// when expressing a clock cap as a percentage.
+typedef nvmlReturn_t (*PFN_GetMaxClock)(nvmlDevice_t, int, unsigned int*);
 typedef nvmlReturn_t (*PFN_GetProcs)(nvmlDevice_t, unsigned int*, nvmlProcessInfo_v1_t*);
 
 struct NvmlApi {
@@ -67,6 +70,7 @@ struct NvmlApi {
     PFN_GetPowerMax       GetPowerMax     = nullptr;
     PFN_GetPowerMgmtLimit GetPowerMgmtLim = nullptr;
     PFN_GetClock      GetClock      = nullptr;
+    PFN_GetMaxClock   GetMaxClock   = nullptr;
     PFN_GetProcs      GetGfxProcs   = nullptr;
     PFN_GetProcs      GetComProcs   = nullptr;
 
@@ -108,6 +112,7 @@ bool LoadNvml() {
     g_api.GetPowerMax     = (PFN_GetPowerMax)      G("nvmlDeviceGetPowerManagementLimitConstraints");
     g_api.GetPowerMgmtLim = (PFN_GetPowerMgmtLimit)G("nvmlDeviceGetPowerManagementLimit");
     g_api.GetClock      = (PFN_GetClock)     G("nvmlDeviceGetClockInfo");
+    g_api.GetMaxClock   = (PFN_GetMaxClock)  G("nvmlDeviceGetMaxClockInfo");
     g_api.GetGfxProcs   = (PFN_GetProcs)     G("nvmlDeviceGetGraphicsRunningProcesses");
     g_api.GetComProcs   = (PFN_GetProcs)     G("nvmlDeviceGetComputeRunningProcesses");
 
@@ -1068,6 +1073,91 @@ bool IsElevated() {
 
 } // anonymous namespace
 
+bool ClockLimitSupported() {
+    if (!NvmlAvailable()) return false;
+
+    // There is no NVML query that reports "can clocks be locked", and guessing
+    // from the card model would be wrong as often as right. Instead attempt a
+    // real lock at the card's own maximum - a no-op ceiling that changes no
+    // behaviour - and see whether the driver accepts it. The lock is released
+    // immediately afterwards.
+    //
+    // Requires elevation; unelevated callers get false, which is correct since
+    // they could not apply a cap anyway.
+    if (!IsElevated()) return false;
+
+    unsigned int maxClk = 0;
+    nvmlDevice_t d = GetDevice(0);
+    if (!d || !g_api.GetMaxClock ||
+        g_api.GetMaxClock(d, NVML_CLOCK_GRAPHICS, &maxClk) != NVML_SUCCESS || maxClk == 0)
+        return false;
+
+    const std::wstring smi = FindNvidiaSmi();
+    std::wstring out;
+    DWORD ec = 1;
+
+    std::wstring probe = L"\"" + smi + L"\" -lgc 0," + Fmt(L"%u", maxClk) + L" --id=0";
+    if (!RunCapture(probe, out, &ec)) return false;
+
+    // nvidia-smi returns 0 even when it prints "not supported", so the message
+    // is what actually distinguishes success.
+    const bool refused = out.find(L"not supported") != std::wstring::npos
+                      || out.find(L"Not Supported") != std::wstring::npos;
+
+    // Release whatever the probe set, regardless of outcome.
+    std::wstring dummy;
+    DWORD dec = 0;
+    RunCapture(L"\"" + smi + L"\" -rgc --id=0", dummy, &dec);
+
+    return !refused;
+}
+
+void SetClockLimitPercent(unsigned int gpuIndex, int percentOfMax, const Sink& sink) {
+    if (!IsElevated()) {
+        sink(L"[error] this action requires administrator rights.");
+        return;
+    }
+    if (!NvmlAvailable()) {
+        sink(L"[error] NVML unavailable.");
+        return;
+    }
+
+    nvmlDevice_t d = GetDevice(gpuIndex);
+    unsigned int maxClk = 0;
+    if (!d || !g_api.GetMaxClock ||
+        g_api.GetMaxClock(d, NVML_CLOCK_GRAPHICS, &maxClk) != NVML_SUCCESS || maxClk == 0) {
+        sink(L"[error] cannot read the maximum graphics clock for this card.");
+        return;
+    }
+
+    const unsigned int target = (maxClk * percentOfMax) / 100;
+    sink(Fmt(L"Locking graphics clock to %u MHz (%d percent of max %u MHz)",
+             target, percentOfMax, maxClk));
+
+    std::wstring cmd = L"\"" + FindNvidiaSmi() + L"\" -lgc 0,"
+                     + Fmt(L"%u", target) + Fmt(L" --id=%u", gpuIndex);
+
+    std::wstring out;
+    DWORD ec = 1;
+    if (!RunCapture(cmd, out, &ec)) {
+        sink(L"[error] could not launch nvidia-smi.");
+        return;
+    }
+    if (!out.empty()) sink(out);
+
+    if (out.find(L"not supported") != std::wstring::npos ||
+        out.find(L"Not Supported") != std::wstring::npos) {
+        sink(L"");
+        sink(L"[failed] the driver refused the clock lock on this card.");
+        return;
+    }
+
+    sink(L"");
+    sink(L"Clock ceiling applied. This lowers heat and power draw, and will");
+    sink(L"also cap peak performance - that is the trade being made.");
+    sink(L"Use Reset GPU Caps to release it; it also clears at driver reload.");
+}
+
 void SetPowerLimitPercent(unsigned int gpuIndex, int percentOfMax, const Sink& sink) {
     if (!IsElevated()) {
         sink(L"[error] this action requires administrator rights.");
@@ -1126,12 +1216,19 @@ void ResetGpuCaps(unsigned int gpuIndex, const Sink& sink) {
         if (!out.empty()) sink(out);
     }
 
-    sink(L"Unlocking clocks...");
-    std::wstring cmd2 = L"\"" + smi + L"\" -rgc" + Fmt(L" --id=%u", gpuIndex);
+    sink(L"Unlocking graphics clock...");
     std::wstring out2;
     DWORD ec2 = 0;
-    RunCapture(cmd2, out2, &ec2);
+    RunCapture(L"\"" + smi + L"\" -rgc" + Fmt(L" --id=%u", gpuIndex), out2, &ec2);
     if (!out2.empty()) sink(out2);
+
+    // -lmc is a separate lock from -lgc; releasing only the graphics clock
+    // would silently leave a memory-clock cap in place.
+    sink(L"Unlocking memory clock...");
+    std::wstring out3;
+    DWORD ec3 = 0;
+    RunCapture(L"\"" + smi + L"\" -rmc" + Fmt(L" --id=%u", gpuIndex), out3, &ec3);
+    if (!out3.empty()) sink(out3);
 
     sink(L"Done.");
 }

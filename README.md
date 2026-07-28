@@ -35,10 +35,22 @@ the GPU, reports mechanism by mechanism whether cross-process enforcement is
 available, and then runs a working closed-loop throttle over a workload it
 *does* own.
 
-The UI reflects hardware reality rather than hiding it. On cards that expose no
-settable power limit — common for GeForce and laptop parts, where the vBIOS
-owns power behaviour — the Power Limit button is detected as unavailable at
-startup and disabled, with the reason printed to the output pane.
+The UI reflects hardware reality rather than hiding it. Each hardware lever is
+probed independently at startup and disabled if the driver refuses it, with the
+reason printed to the output pane.
+
+The two levers are not interchangeable, and testing only one would be
+misleading. On the reference RTX 3060 Laptop GPU:
+
+| Lever | Result |
+|---|---|
+| Power limit (`nvidia-smi -pl`) | Refused — *"not supported in current scope"*, even elevated |
+| Graphics clock lock (`nvidia-smi -lgc`) | **Works** |
+
+So on that hardware the clock lock is the only usable way to hold down heat and
+power draw. `ClockLimitSupported()` determines this by attempting a real no-op
+lock at the card's own maximum and checking whether the driver accepts it,
+rather than inferring from the model name.
 
 ## Layout
 

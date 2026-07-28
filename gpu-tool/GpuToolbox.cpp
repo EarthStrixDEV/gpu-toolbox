@@ -72,6 +72,7 @@ enum : int {
     ID_BTN_PREF_PERF,
     ID_BTN_PREF_RESET,
     ID_BTN_POWERLIMIT,
+    ID_BTN_CLOCKLIMIT,
     ID_BTN_GPU_RESET,
     ID_BTN_CLEAR,
     ID_BTN_OPENLOG,
@@ -124,7 +125,8 @@ static void SetWatchButtonText();
 
 // Capability flags probed once at startup.
 static bool g_hasNvidiaSmi   = false;
-static bool g_powerLimitOk   = false;   // false when power.limit reads [N/A]
+static bool g_powerLimitOk   = false;   // false when no settable power limit
+static bool g_clockLimitOk   = false;   // false when the driver refuses -lgc
 
 
 // PDH query for total CPU usage.
@@ -169,9 +171,12 @@ static void ProbeCapabilities() {
     g_hasNvidiaSmi = gpucore::NvmlInit() && gpucore::NvmlAvailable();
     if (!g_hasNvidiaSmi) return;
 
-    // Does the driver expose an enforced power limit? GeForce parts commonly
-    // do not, which means a power-limit request would be rejected.
+    // Probe the two hardware levers independently - they are not equivalent.
+    // On this class of card -pl is refused outright while -lgc still works, so
+    // testing only one would either hide a working feature or offer a dead
+    // button.
     g_powerLimitOk = gpucore::PowerLimitSupported();
+    g_clockLimitOk = gpucore::ClockLimitSupported();
 }
 
 // ---------------------------------------------------------------------------
@@ -231,8 +236,8 @@ static void SetButtonsEnabled(bool enabled) {
     const int ids[] = {
         ID_BTN_STATUS, ID_BTN_WATCH, ID_BTN_PREF_POWERSAVE,
         ID_BTN_PREF_PERF, ID_BTN_PREF_RESET, ID_BTN_POWERLIMIT,
-        ID_BTN_GPU_RESET, ID_BTN_BG_LIST, ID_BTN_BG_LOWER,
-        ID_BTN_BG_RESTORE
+        ID_BTN_CLOCKLIMIT, ID_BTN_GPU_RESET, ID_BTN_BG_LIST,
+        ID_BTN_BG_LOWER, ID_BTN_BG_RESTORE
     };
     for (int id : ids) {
         HWND h = GetDlgItem(g_hMain, id);
@@ -247,8 +252,10 @@ static void SetButtonsEnabled(bool enabled) {
         // Keep permanently-unavailable controls disabled regardless of job
         // state, so re-enabling never resurrects a dead button.
         if (id == ID_BTN_POWERLIMIT && !g_powerLimitOk) on = FALSE;
+        if (id == ID_BTN_CLOCKLIMIT && !g_clockLimitOk) on = FALSE;
         if ((id == ID_BTN_STATUS || id == ID_BTN_WATCH ||
-             id == ID_BTN_POWERLIMIT || id == ID_BTN_GPU_RESET) && !g_hasNvidiaSmi) on = FALSE;
+             id == ID_BTN_POWERLIMIT || id == ID_BTN_CLOCKLIMIT ||
+             id == ID_BTN_GPU_RESET) && !g_hasNvidiaSmi) on = FALSE;
 
         EnableWindow(h, on);
     }
@@ -421,10 +428,11 @@ static void CreateUI(HWND hwnd) {
     y += BH + 16;
 
     // ---- hardware caps ----------------------------------------------------
-    MakeLabel(hwnd, L"Hardware cap  (admin required)", M, y, 460, 18);
+    MakeLabel(hwnd, L"Hardware cap  (unsupported levers are disabled)", M, y, 460, 18);
     y += 22;
-    MakeButton(hwnd, L"Power Limit 90%", ID_BTN_POWERLIMIT, M,            y, BW, BH);
-    MakeButton(hwnd, L"Reset GPU Caps",  ID_BTN_GPU_RESET,  M + BW + GAP, y, BW, BH);
+    MakeButton(hwnd, L"Power Limit 90%", ID_BTN_POWERLIMIT, M,              y, BW, BH);
+    MakeButton(hwnd, L"Clock Limit 90%", ID_BTN_CLOCKLIMIT, M + BW + GAP,   y, BW, BH);
+    MakeButton(hwnd, L"Reset GPU Caps",  ID_BTN_GPU_RESET,  M + 2*(BW+GAP), y, BW, BH);
     y += BH + 16;
 
     // ---- output -----------------------------------------------------------
@@ -480,11 +488,22 @@ static void PrintBanner() {
 
     if (!g_powerLimitOk) {
         AppendLine(L"");
-        AppendLine(L"[!] This card exposes no enforced power limit.");
-        AppendLine(L"    A power-limit request would be rejected by the driver, so");
-        AppendLine(L"    that button is disabled. Normal for GeForce / laptop GPUs");
-        AppendLine(L"    where the vBIOS owns power behaviour.");
-        AppendLine(L"    Use MSI Afterburner if you need a real power cap.");
+        AppendLine(L"[!] Power Limit is unavailable on this card.");
+        AppendLine(L"    nvidia-smi -pl answers \"not supported in current scope\"");
+        AppendLine(L"    even when elevated - the board/vBIOS owns power behaviour,");
+        AppendLine(L"    which is normal for GeForce and laptop GPUs. Running as");
+        AppendLine(L"    administrator does not change this.");
+        AppendLine(L"    Use MSI Afterburner if you need a true power cap.");
+    }
+
+    if (g_clockLimitOk) {
+        AppendLine(L"");
+        AppendLine(L"[ok] Clock Limit works on this card. Locking the graphics");
+        AppendLine(L"     clock is the usable lever here for reducing heat and");
+        AppendLine(L"     power draw, at the cost of peak performance.");
+    } else {
+        AppendLine(L"");
+        AppendLine(L"[!] Clock Limit is unavailable on this card.");
     }
 
     AppendLine(L"");
@@ -623,6 +642,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             RunJobAsync([](const gpucore::Sink& s) {
                 gpucore::SetPowerLimitPercent(0, 90, s);
             }, L"Power Limit 90%");
+            break;
+
+        case ID_BTN_CLOCKLIMIT:
+            if (!g_clockLimitOk) {
+                AppendLine(L"[blocked] this card does not accept a clock lock.");
+                break;
+            }
+            RunJobAsync([](const gpucore::Sink& s) {
+                gpucore::SetClockLimitPercent(0, 90, s);
+            }, L"Clock Limit 90%");
             break;
 
         case ID_BTN_GPU_RESET:

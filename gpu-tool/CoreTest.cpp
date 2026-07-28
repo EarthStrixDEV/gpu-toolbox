@@ -50,6 +50,18 @@ int wmain(int argc, wchar_t** argv) {
                                    : gpucore::PrioMode::Restore;
         gpucore::ApplyBackgroundPriority(o, sink);
     }
+    else if (cmd == L"caps") {
+        // Report which hardware levers this card actually accepts.
+        wprintf(L"PowerLimitSupported = %d\n", gpucore::PowerLimitSupported());
+        wprintf(L"ClockLimitSupported = %d\n", gpucore::ClockLimitSupported());
+    }
+    else if (cmd == L"clocklimit") {
+        int pct = (argc >= 3) ? _wtoi(argv[2]) : 90;
+        gpucore::SetClockLimitPercent(0, pct, sink);
+    }
+    else if (cmd == L"resetcaps") {
+        gpucore::ResetGpuCaps(0, sink);
+    }
     else if (cmd == L"pref-reset") {
         gpucore::PrefOptions o;
         o.mode    = gpucore::GpuPref::Reset;

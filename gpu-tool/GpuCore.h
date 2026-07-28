@@ -54,9 +54,17 @@ bool NvmlInit();
 void NvmlShutdown();
 bool NvmlAvailable();
 
-// True when the driver exposes an enforced power limit. GeForce parts often
-// do not, which is why the GUI gates its Power Limit button on this.
+// True when the driver exposes a SETTABLE power limit. GeForce and laptop
+// parts commonly do not: the board/vBIOS owns power behaviour and
+// `nvidia-smi -pl` answers "not supported in current scope" even when run
+// elevated. The GUI gates its Power Limit button on this.
 bool PowerLimitSupported();
+
+// True when graphics clocks can be locked (`nvidia-smi -lgc`). Verified
+// independently of the power limit: on hardware where -pl is refused outright,
+// -lgc frequently still works, and clock locking is then the only usable lever
+// for holding down heat and power draw.
+bool ClockLimitSupported();
 
 bool  QueryStats(unsigned int gpuIndex, GpuStats& out);
 std::vector<GpuProcess> QueryGpuProcesses(unsigned int gpuIndex);
@@ -140,6 +148,12 @@ void ApplyBackgroundPriority(const PriorityOptions& opt, const Sink& sink);
 // the PS1 used. Both report the failure plainly when the driver refuses.
 // ---------------------------------------------------------------------------
 void SetPowerLimitPercent(unsigned int gpuIndex, int percentOfMax, const Sink& sink);
+
+// Lock the graphics clock to a ceiling, as a percentage of the card's maximum
+// supported graphics clock. This is the working alternative on hardware that
+// refuses -pl.
+void SetClockLimitPercent(unsigned int gpuIndex, int percentOfMax, const Sink& sink);
+
 void ResetGpuCaps(unsigned int gpuIndex, const Sink& sink);
 
 } // namespace gpucore
