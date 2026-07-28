@@ -5,7 +5,10 @@
 *.ilk
 *.exp
 *.lib
-*.manifest
+
+# Linker-generated side-by-side manifest. GpuToolbox.manifest is hand-written
+# source and must stay tracked - it is what makes the app require admin.
+*.exe.manifest
 
 # MSVC incremental build artifacts
 *.idb

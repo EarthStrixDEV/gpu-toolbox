@@ -8,7 +8,9 @@
 //      have been ported to C++); no powershell.exe is spawned
 //    - Shows live GPU stats (NVML) and total CPU load (PDH)
 //    - Streams job output into a read-only output pane
-//    - Relaunches itself elevated only for the actions that need admin
+//    - Requires administrator: GpuToolbox.manifest requests
+//      requireAdministrator and is embedded by build.bat, so Windows prompts
+//      before the process starts and refuses to run it unelevated
 //
 //  WHAT THIS DELIBERATELY DOES *NOT* DO:
 //    There is no "Optimize GPU/CPU" button. On this machine nvidia-smi
@@ -56,10 +58,9 @@
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "advapi32.lib")
 
-// Enable visual styles so controls don't render in Windows 95 chrome.
-#pragma comment(linker, "\"/manifestdependency:type='win32' \
-name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+// Visual styles, elevation and DPI awareness all come from
+// GpuToolbox.manifest, which build.bat embeds. Declaring the common-controls
+// dependency here as well would produce a second, conflicting manifest.
 
 // ---------------------------------------------------------------------------
 // Control IDs
@@ -284,50 +285,9 @@ static void RunJobAsync(std::function<void(const gpucore::Sink&)> job,
     }).detach();
 }
 
-// ---------------------------------------------------------------------------
-// Launch a script elevated. Elevation needs a *visible* console because
-// ShellExecuteEx with "runas" cannot hand us inherited pipes across the UAC
-// boundary - so output goes to its own window rather than our pane. We tell
-// the user that instead of pretending output was lost.
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Relaunch THIS executable elevated to run one admin-only action.
-//
-// nvidia-smi's power/clock limits require administrator rights, and a token
-// cannot be elevated in place - a new process must be started via the "runas"
-// verb. We re-invoke ourselves with a CLI switch rather than shelling out to
-// PowerShell, so the migration away from .ps1 stays complete.
-// ---------------------------------------------------------------------------
-static void RunElevatedSelf(const std::wstring& cliArgs,
-                            const std::wstring& label)
-{
-    wchar_t self[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, self, MAX_PATH);
-
-    SHELLEXECUTEINFOW sei{};
-    sei.cbSize       = sizeof(sei);
-    sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpVerb       = L"runas";              // triggers the UAC prompt
-    sei.lpFile       = self;
-    sei.lpParameters = cliArgs.c_str();
-    sei.nShow        = SW_SHOWNORMAL;
-
-    AppendLine(L"");
-    AppendLine(L"=== " + label + L" (elevated) ===");
-    AppendLine(L"A UAC prompt will appear; output shows in the elevated window.");
-
-    if (!ShellExecuteExW(&sei)) {
-        DWORD e = GetLastError();
-        if (e == ERROR_CANCELLED) AppendLine(L"[cancelled] UAC prompt declined.");
-        else {
-            wchar_t t[96];
-            swprintf_s(t, L"[error] elevation failed (%lu).", e);
-            AppendLine(t);
-        }
-        return;
-    }
-    if (sei.hProcess) CloseHandle(sei.hProcess);
-}
+// Self-elevation is no longer needed: the embedded manifest requests
+// requireAdministrator, so the process is always elevated by the time any
+// button can be pressed. Admin-only actions therefore run in-process.
 
 // ---------------------------------------------------------------------------
 // Watch mode runs an unbounded polling loop, so it gets its own visible
@@ -657,11 +617,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 AppendLine(L"[blocked] this card does not expose a settable power limit.");
                 break;
             }
-            RunElevatedSelf(L"--powerlimit=90", L"Power Limit 90%");
+            // The manifest guarantees this process is already elevated, so the
+            // action runs in-process and streams into the output pane rather
+            // than spawning a second elevated console.
+            RunJobAsync([](const gpucore::Sink& s) {
+                gpucore::SetPowerLimitPercent(0, 90, s);
+            }, L"Power Limit 90%");
             break;
 
         case ID_BTN_GPU_RESET:
-            RunElevatedSelf(L"--resetcaps", L"Reset GPU Caps");
+            RunJobAsync([](const gpucore::Sink& s) {
+                gpucore::ResetGpuCaps(0, s);
+            }, L"Reset GPU Caps");
             break;
 
         case ID_BTN_BG_LIST:

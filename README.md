@@ -55,6 +55,25 @@ gpu-tool/
 GPU-Guide.txt         Full usage guide (Thai)
 ```
 
+## Elevation
+
+`GpuToolbox.exe` requires administrator rights. `GpuToolbox.manifest` requests
+`requireAdministrator` and is embedded into the binary at link time, so Windows
+shows the UAC prompt before the process starts and refuses to launch it if
+consent is denied — a runtime token check cannot elevate an already-running
+process.
+
+Practical consequences:
+
+- The exe cannot start silently from Explorer, the Startup folder, or a plain
+  Task Scheduler entry. For unattended auto-start, create a scheduled task with
+  *Run with highest privileges* enabled.
+- `/MANIFESTUAC:NO` in `build.bat` is mandatory, not cosmetic. Without it the
+  linker emits its own `asInvoker` trustInfo block, which collides with ours
+  and fails the build with `manifest authoring error c1010001`.
+- `CoreTest.exe` is unaffected and still runs unelevated, which is why it
+  remains the better choice for read-only checks like `status` and `list`.
+
 ## Building
 
 ```

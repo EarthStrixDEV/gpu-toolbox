@@ -34,10 +34,21 @@ REM  /std:c++17 for the std::thread / atomic usage
 REM  /DUNICODE /D_UNICODE  wide-char Win32 API throughout
 REM  /SUBSYSTEM:WINDOWS  GUI app, no console window
 REM  GpuCore.cpp holds the native ports of the three PowerShell scripts.
+REM
+REM  /MANIFEST:EMBED + /MANIFESTINPUT embeds GpuToolbox.manifest directly into
+REM  the exe. That manifest requests requireAdministrator, so Windows prompts
+REM  for elevation before the process starts. Embedding matters: a loose
+REM  .exe.manifest file next to the binary is ignored once the exe carries its
+REM  own, and is easy to lose when copying the exe elsewhere.
+REM  /MANIFESTUAC:NO is required, not optional: without it the linker emits its
+REM  own trustInfo block defaulting to asInvoker, which collides with the
+REM  requireAdministrator level in our manifest and fails the build with
+REM  "manifest authoring error c1010001: Values of attribute level not equal".
 cl /nologo /W4 /EHsc /O2 /std:c++17 /DUNICODE /D_UNICODE ^
    GpuToolbox.cpp GpuCore.cpp ^
    /Fe:GpuToolbox.exe ^
-   /link /SUBSYSTEM:WINDOWS
+   /link /SUBSYSTEM:WINDOWS ^
+   /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:GpuToolbox.manifest
 
 if errorlevel 1 (
     echo.

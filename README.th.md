@@ -54,6 +54,25 @@ gpu-tool/
 GPU-Guide.txt         คู่มือใช้งานฉบับเต็ม (ภาษาไทย)
 ```
 
+## สิทธิ์ Administrator
+
+`GpuToolbox.exe` ต้องรันด้วยสิทธิ์ administrator เท่านั้น โดย
+`GpuToolbox.manifest` ระบุ `requireAdministrator` และถูกฝังเข้าไปในตัว
+binary ตอน link ดังนั้น Windows จะขึ้น UAC ก่อนที่ process จะเริ่มทำงาน
+และจะไม่ยอมเปิดเลยถ้าไม่กดยืนยัน — การเช็ค token ตอน runtime ยกระดับสิทธิ์
+ให้ process ที่รันไปแล้วไม่ได้
+
+ผลที่ตามมาในทางปฏิบัติ:
+
+- เปิดแบบเงียบๆ จาก Explorer, โฟลเดอร์ Startup หรือ Task Scheduler ธรรมดา
+  ไม่ได้ ถ้าต้องการให้เปิดอัตโนมัติ ให้สร้าง scheduled task แล้วติ๊ก
+  *Run with highest privileges*
+- `/MANIFESTUAC:NO` ใน `build.bat` เป็นสิ่งจำเป็น ไม่ใช่ของประดับ ถ้าไม่ใส่
+  linker จะสร้าง trustInfo ของตัวเองเป็น `asInvoker` แล้วชนกับของเรา
+  ทำให้ build ล้มเหลวด้วย `manifest authoring error c1010001`
+- `CoreTest.exe` ไม่ได้รับผลกระทบ ยังรันได้โดยไม่ต้อง admin จึงเหมาะกว่า
+  สำหรับคำสั่งที่แค่อ่านค่าอย่าง `status` และ `list`
+
 ## การ Build
 
 ```

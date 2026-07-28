@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+
+  <assemblyIdentity
+      type="win32"
+      name="EarthStrix.GpuToolbox"
+      version="1.0.0.0"
+      processorArchitecture="amd64" />
+
+  <description>GPU Toolbox - NVIDIA GPU diagnostics</description>
+
+  <!--
+    requireAdministrator: Windows shows the UAC prompt before the process
+    starts, and refuses to launch it at all if consent is denied. This is the
+    only way to guarantee elevation - checking the token at runtime cannot
+    elevate an already-running process.
+
+    Consequence worth knowing: the exe can no longer be started from a
+    non-elevated context without a prompt, including by Explorer, the Startup
+    folder, or a plain Task Scheduler entry. See README for the scheduled-task
+    workaround if a silent auto-start is ever needed.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- Visual styles: without this the controls render in Windows 95 chrome. -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+          type="win32"
+          name="Microsoft.Windows.Common-Controls"
+          version="6.0.0.0"
+          processorArchitecture="*"
+          publicKeyToken="6595b64144ccf1df"
+          language="*" />
+    </dependentAssembly>
+  </dependency>
+
+  <!-- Declare Windows 10/11 support so version APIs report the real OS. -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+    </application>
+  </compatibility>
+
+  <!-- Per-monitor DPI awareness keeps the UI sharp on scaled displays. -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+
+</assembly>
