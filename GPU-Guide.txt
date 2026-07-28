@@ -1,0 +1,337 @@
+===============================================================================
+ GPU TOOLBOX - GUIDE
+ Updated : 2026-07-28
+ Root    : C:\Users\mis\scripts\
+===============================================================================
+
+ อ่านตรงนี้ก่อน 3 บรรทัด:
+
+   1. GPU utilization ตั้งเพดานตรงๆ ไม่ได้ ไม่มี API ไหนทำได้ รวมถึง CUDA
+   2. เครื่องนี้ตั้ง power limit ไม่ได้ (การ์ดปฏิเสธ) ปุ่มนั้นเลยถูกปิดไว้
+   3. GPU วิ่ง 100% ตอนเล่นเกม/สตรีม = ปกติ ไม่ใช่อาการเสีย
+
+
+===============================================================================
+ 0) มีอะไรบ้าง
+===============================================================================
+
+ gpu-tool\GpuToolbox.exe        <- ตัวหลัก GUI ใช้ตัวนี้พอ
+ gpu-tool\CoreTest.exe          <- CLI ตัวเดียวกัน ไว้เทียบผล/ใส่ script
+ gpu-tool\GpuThrottleDemo.exe   <- demo พิสูจน์เรื่อง CUDA (อ่านหัวข้อ 5)
+
+ gpu-tool\GpuToolbox.cpp        <- GUI (Win32)
+ gpu-tool\GpuCore.cpp / .h      <- logic ทั้งหมด (port มาจาก .ps1)
+ gpu-tool\CoreTest.cpp          <- harness
+ gpu-tool\GpuThrottleDemo.cpp
+ gpu-tool\build.bat             <- build GUI
+ gpu-tool\build-test.bat        <- build CoreTest
+ gpu-tool\build-demo.bat        <- build demo
+
+ Limit-GpuUsage.ps1             <- ของเดิม เก็บไว้เทียบผล ไม่ใช่ตัวหลักแล้ว
+ Set-GpuPreference.ps1
+ Set-BackgroundPriority.ps1
+
+ GUI ไม่เรียก .ps1 แล้ว logic ถูก compile เข้า exe ตรงๆ ลบ .ps1 ทิ้งได้
+ โดย GUI ไม่พัง แต่แนะนำเก็บไว้ก่อน
+
+
+===============================================================================
+ 1) GpuToolbox.exe - ใช้ยังไง
+===============================================================================
+
+ ดับเบิลคลิกเปิดได้เลย ไม่ต้อง admin (ยกเว้นปุ่มกลุ่ม Hardware cap)
+
+ -------------------------------------------------------------------------
+ แถบ Live (บนสุด)
+ -------------------------------------------------------------------------
+   GPU  3%    76 C    45.9 W    1425 MHz        CPU  26%
+
+   อัปเดตทุก 1.5 วิ อ่านจาก NVML ตรง (ไม่ผ่าน nvidia-smi)
+   ถ้า util >= threshold ที่ตั้งไว้ จะขึ้น [OVER 80%] ต่อท้าย
+
+ -------------------------------------------------------------------------
+ Slider: Alert threshold
+ -------------------------------------------------------------------------
+   ช่วง 50-100% default 80%
+   ค่านี้ส่งเข้า Watch ตอนกด Start Watch และคุมป้าย [OVER] บนแถบ Live
+   ปรับแล้วมีผลทันที ไม่ต้องกดอะไรเพิ่ม
+
+   ทำไม default 80 ไม่ใช่ 90:
+     ที่ 90% GPU saturate ไปแล้ว frame pacing มักเสียก่อนจะ log อะไรได้
+     ที่ 80% ยังจับ ramp ได้ตอนมี headroom เหลือ
+
+ -------------------------------------------------------------------------
+ กลุ่ม Diagnose (ปลอดภัย อ่านอย่างเดียว)
+ -------------------------------------------------------------------------
+   [GPU Status]      ชื่อการ์ด, util, temp, power, clock + list process
+                     ที่ใช้ GPU อยู่ตอนนี้
+
+   [Start Watch]     เริ่มเฝ้าดู กดซ้ำ = Stop Watch (ปุ่มเดียวกัน)
+                     รันใน process เดียวกัน output ลงช่อง Output เลย
+                     ไม่เปิดหน้าต่างแยกเหมือนเวอร์ชัน PowerShell
+                     เขียน log ที่ %LOCALAPPDATA%\gpu-watchdog.log
+
+   [Open Watch Log]  เปิด log ด้วย notepad
+                     ถ้ายังไม่เคยรัน Watch จนเกิด episode จะยังไม่มีไฟล์
+
+ -------------------------------------------------------------------------
+ กลุ่ม Background CPU/IO priority
+ -------------------------------------------------------------------------
+   ***  ปุ่มกลุ่มนี้ไม่ได้ลด GPU  ***
+   มันลด CPU priority + I/O priority เท่านั้น ชื่อกลุ่มบอกตรงๆ แบบนั้น
+   เพราะ Windows ไม่มี API จำกัด GPU ต่อ process (อ่านหัวข้อ 5)
+
+   ช่วยเมื่อ: CPU แน่น แล้วเกม/OBS encoder โดนแย่ง scheduling
+   ไม่ช่วยเมื่อ: คอขวดอยู่ที่ GPU ล้วนๆ
+
+   [List Background]  ดูว่าจะไปยุ่งกับ process ไหนบ้าง ไม่เปลี่ยนอะไร
+   [Lower Priority]   ลดเป็น BelowNormal + I/O very low
+   [Restore Normal]   คืนค่าเดิม
+
+   process ที่จับ: firefox, msedgewebview2, chrome, brave, Discord,
+                   NVIDIA Overlay, NVIDIA Web Helper, EPConsole, SearchHost,
+                   CrossDeviceResume, TextInputHost, OneDrive, Widgets,
+                   WidgetService
+
+   ไม่แตะเด็ดขาด: dwm, csrss, winlogon, services, lsass, smss, wininit,
+                   System, Registry, obs64, obs, powershell, pwsh,
+                   WindowsTerminal, GpuToolbox
+
+ -------------------------------------------------------------------------
+ กลุ่ม App GPU preference (เขียน registry + ปิด OBS)
+ -------------------------------------------------------------------------
+   [OBS -> Power Saving]  ย้าย OBS ไป iGPU  **มี confirm dialog**
+                          กดแล้วปิด OBS ทันที สตรีม/อัดที่ค้างอยู่จะหลุด
+   [OBS -> High Perf]     ย้าย OBS ไป NVIDIA (ไม่ปิด OBS)
+   [Reset Preference]     ลบค่าที่ตั้งไว้ กลับไปให้ Windows ตัดสินใจ
+
+   เขียนที่ HKCU\Software\Microsoft\DirectX\UserGpuPreferences
+   ค่าอยู่ถาวรข้าม reboot ต้องกด Reset ถึงจะหาย
+
+ -------------------------------------------------------------------------
+ กลุ่ม Hardware cap (ต้อง admin)
+ -------------------------------------------------------------------------
+   [Power Limit 90%]  *** ปุ่มนี้เทาอยู่บนเครื่องนี้ ***
+   [Reset GPU Caps]   คืน power limit + ปลดล็อก clock
+
+   กดแล้วจะ relaunch ตัวเองผ่าน UAC แล้วเปิด console แสดงผล
+   (elevate ในตัวเองไม่ได้ ต้องสร้าง process ใหม่)
+
+
+===============================================================================
+ 2) ทำไมปุ่ม Power Limit ถึงเทา
+===============================================================================
+
+ ตรวจสอบจริงบนเครื่องนี้แล้ว:
+
+   nvidia-smi --query-gpu=power.limit --format=csv
+     -> [N/A]
+
+   nvidia-smi -pl 80 --id=0
+     -> "Changing power management limit is not supported in current scope"
+
+ สังเกตว่าเป็น "not supported" ไม่ใช่ "permission denied" แปลว่า
+ ต่อให้รันเป็น admin ก็ไม่ได้ ไม่ใช่เรื่องสิทธิ์
+
+ RTX 3060 Laptop: power/clock ถูกคุมโดย vBIOS + Dynamic Boost ของ OEM
+ driver ไม่เปิดให้ user-space เปลี่ยน (รองรับเต็มเฉพาะ Quadro/Tesla)
+
+ อยาก cap power จริงๆ -> ใช้ MSI Afterburner
+
+ หมายเหตุทางเทคนิค (เผื่ออ่านโค้ด):
+   ตอน port มา C++ เคยใช้ nvmlDeviceGetEnforcedPowerLimit ตรวจ ซึ่งคืน 85W
+   สำเร็จ ทำให้ปุ่มเปิดทั้งที่การ์ดปฏิเสธ แก้เป็น
+   nvmlDeviceGetPowerManagementLimit ซึ่งคืน N/A ตรงกับความจริง
+   -> enforced limit = "ที่บังคับใช้อยู่"  management limit = "ที่ตั้งได้"
+
+
+===============================================================================
+ 3) Watch ทำงานยังไง (episode tracking)
+===============================================================================
+
+ ไม่ได้ log ทุก poll แต่จับเป็น "episode" คือช่วงที่ util เกิน threshold ต่อเนื่อง
+
+   เปิด episode : util >= threshold ติดกัน 3 poll (กัน spike สั้นๆ)
+   ระหว่าง      : เก็บ peak, average, และ snapshot รายชื่อ process ตอน peak
+   ปิด episode  : util <= (threshold - 10) ติดกัน 2 poll
+
+ ที่ต้องมี margin 10% ตอนปิด (hysteresis) เพราะถ้าปิดทันทีที่ต่ำกว่า threshold
+ load ที่วิ่งคาบเส้นจะเปิด-ปิด episode รัวๆ จน log ท่วม
+
+ ทำไมเก็บ process list ตอน peak: sample นั้นชี้ตัวการได้แม่นที่สุด
+
+ หน้าตา log:
+   2026-07-28 01:15:03  EPISODE START  util=84%  temp=78C  power=61.2W  (threshold 80%)
+   2026-07-28 01:15:47  EPISODE END    duration=44s  peak=97%  avg=88%
+                    at peak: DeadByDaylight-Win64-Shipping.exe | obs64.exe | firefox.exe
+
+
+===============================================================================
+ 4) CoreTest.exe - CLI
+===============================================================================
+
+ logic ตัวเดียวกับ GUI ใช้ตอนอยากเทียบผลกับ .ps1 หรือใส่ใน script
+
+   CoreTest.exe status           ดูสถานะ GPU
+   CoreTest.exe list             ดู background process (ไม่เปลี่ยนอะไร)
+   CoreTest.exe lower            ลด priority
+   CoreTest.exe restore          คืน priority
+   CoreTest.exe pref-reset       ลบ GPU preference (บังคับ SkipDwm ในตัว)
+   CoreTest.exe watch <วินาที> [threshold]
+                                 เช่น: CoreTest.exe watch 30 75
+
+ *** กับดักสำคัญ ***
+ C++ กับ PS1 เก็บ state คนละไฟล์:
+     C++  -> %LOCALAPPDATA%\gpu-bgpriority-state.txt
+     PS1  -> %LOCALAPPDATA%\gpu-bgpriority-state.json
+ ห้าม Lower ด้วยตัวนึงแล้ว Restore ด้วยอีกตัว มันหาไฟล์กันไม่เจอ
+ -> Restore จะบอกว่าไม่มี state แล้วไม่ทำอะไร (ปลอดภัย แต่ priority ค้าง)
+ ใช้ตัวไหน Lower ก็ Restore ด้วยตัวนั้น
+
+
+===============================================================================
+ 5) เรื่อง CUDA - ทำไมบังคับ process อื่นไม่ได้
+===============================================================================
+
+ คำถามเดิม: "ใช้ CUDA บังคับ service ให้ใช้ GPU ต่ำกว่า threshold"
+ คำตอบ: ทำไม่ได้ และไม่ใช่เพราะหาวิธีไม่เจอ
+
+ CUDA เป็น API สำหรับส่งงานของ "โปรแกรมเราเอง" เข้า GPU
+ CUDA context คุมได้แค่ process ที่สร้างมันขึ้นมา
+
+ GpuThrottleDemo.exe enumerate จริงบนเครื่องนี้แล้วพบ 20 graphics clients
+ (DeadByDaylight, obs64, firefox, msedgewebview2, explorer ฯลฯ)
+ ทั้งหมด render ผ่าน D3D12/DXGI ไม่มีตัวไหนถือ CUDA context เลย
+ -> ไม่มี CUDA call ไหนเรียกถึงพวกนี้ได้
+
+ กลไกที่มีอยู่จริง เทียบกันตรงๆ:
+
+   cudaStreamCreateWithPriority    จัดลำดับ stream ใน process เดียวกัน
+   CUDA_MPS_ACTIVE_THREAD_PERCENT  cap SM ได้จริง แต่ Linux + MPS + CUDA client เท่านั้น
+   CUDA Green Contexts (12.4+)     แบ่ง SM ให้ context ที่เราเป็นเจ้าของ
+   NVML per-process utilization    อ่านได้ บังคับไม่ได้
+   NVML power/clock limit          มีผลทั้ง device ไม่ใช่ต่อ process
+   WDDM scheduler filter driver    <- ทางเดียวที่ enforce ต่อ process ได้จริง
+                                      kernel-mode ring-0 ต้อง WHQL sign
+
+ บน Windows คิว GPU เป็นของ WDDM scheduler ไม่ใช่ของ user-space
+
+ GpuThrottleDemo ทำอะไรได้จริง:
+   closed-loop throttle คุม GPU workload ของ *ตัวมันเอง* ให้อยู่ใต้ threshold
+   ใช้ proportional control ปรับ duty cycle ตาม error
+
+   ผลรันจริง target 20%:
+     duty 100% -> 92 -> 84 -> 76 -> 68 -> 52 -> 47 -> ... -> 24.8% แล้ว converge
+     util  30% -> 25 -> 22 -> 22 -> 22 -> 20 -> hold
+
+   แต่ samples over target = 54% เพราะ baseline จาก process อื่น = 17%
+   ใกล้ target 20% มาก -> throttle ตัวเองจนเกือบหยุดก็ดึง device-wide ไม่ลง
+   นี่คือข้อจำกัดข้างบน แสดงออกมาเป็นตัวเลข
+
+   ใช้ประโยชน์ได้จริงถ้าพี่เขียน CUDA/ML/render job เอง
+   แล้วอยากไม่ให้มันแย่ง GPU ตอนสตรีม
+
+   วิธีรัน:  GpuThrottleDemo.exe -t 20 -d 14
+             -t threshold (5-100)   -d วินาที (5-300)
+
+   หมายเหตุ: workload ใช้ D3D11 texture copy ไม่ใช่ CUDA kernel จริง
+   เพราะเครื่องนี้ไม่มี CUDA Toolkit (ไม่มี nvcc) หลักการ control loop
+   เหมือนกันทุกอย่าง ถ้าลง Toolkit ทีหลังเปลี่ยนเป็น .cu kernel ได้เลย
+
+
+===============================================================================
+ 6) dwm.exe - อย่าหลงประเด็น
+===============================================================================
+
+ ตั้ง GPU preference ให้ dwm.exe มักไม่มีผล
+ DWM ต้อง render บน GPU ที่ "ขับจออยู่จริง"
+ ถ้าสายจอเสียบเข้าการ์ด NVIDIA โดยตรง DWM อยู่บน NVIDIA ตลอด ไม่ว่าตั้งอะไร
+
+ วิธีที่ได้ผลจริง: ย้ายสายจอไปพอร์ตเมนบอร์ด (iGPU)
+
+ และ dwm.exe ที่พุ่งสูงมักเป็น "อาการ" ไม่ใช่ "สาเหตุ"
+ ตัวจริงคือแอปที่เปิด hardware acceleration อยู่เบื้องหลัง
+ (Chrome / Discord / Electron / Firefox)
+ -> ปิด HW accel ในแอปพวกนั้นตรงจุดกว่ามาก
+
+
+===============================================================================
+ 7) ลำดับที่ควรทำเวลาเจอปัญหา
+===============================================================================
+
+   ขั้น 1  กด [GPU Status]
+           ดู temp กับ util ตอนนี้ก่อน
+
+   ขั้น 2  ตั้ง slider แล้วกด [Start Watch] เปิดทิ้งไว้ตอนใช้งานจริง
+           เล่นเกม/สตรีมตามปกติ แล้วดูว่า episode ไหนโผล่ ใครอยู่ตอน peak
+
+   ขั้น 3  รู้ตัวการแล้วค่อยเลือก:
+           - แอปพื้นหลัง (Chrome/Discord/Firefox) -> ปิด HW accel ในแอปนั้น
+           - OBS แย่ง GPU                          -> ลด canvas/bitrate หรือ
+                                                      [OBS -> Power Saving]
+           - CPU แน่น เกมกระตุก                    -> [Lower Priority]
+           - ร้อน/พัดลมดัง                          -> ดูขั้น 8
+
+   อย่าข้ามไปขั้น 3 โดยไม่ผ่าน 1-2
+
+
+===============================================================================
+ 8) เรื่อง 80C ที่ util ต่ำ - อ่านหน่อย
+===============================================================================
+
+ วัดจริงบนเครื่องนี้: util 3% แต่ temp 76-80C
+
+ นี่ผิดปกติ และไม่ใช่ปัญหา software
+ GPU ที่แทบไม่ทำงานไม่ควรร้อนขนาดนี้ สาเหตุที่เป็นไปได้:
+   - ฝุ่นตันครีบระบายความร้อน
+   - thermal paste แห้ง (โน้ตบุ๊กอายุ 2-3 ปีขึ้นไปเจอบ่อย)
+   - วางบนพื้นนุ่ม/ที่นอน ปิดช่องลมเข้า
+   - Dynamic Boost ดัน power ค้างไว้ (46W ที่ util 3% ก็สูงผิดปกติ)
+
+ ไม่มีปุ่มไหนในเครื่องมือนี้แก้เรื่องนี้ได้
+ การ cap power ถ้าทำได้ก็แค่กดอาการ ไม่ได้แก้ต้นเหตุ
+
+ *** และถ้าอาการคือเฟรมกระตุก/OBS ดรอปเฟรม ตอน GPU แตะ 100% ***
+ การ cap power จะทำให้ "แย่ลง" เพราะปัญหาคือ GPU ไม่พอกับงาน
+ แก้ที่ต้นทาง: จำกัด FPS ในเกม, ลด OBS canvas/bitrate,
+ ปิด HW accel ในแอปพื้นหลัง
+
+
+===============================================================================
+ 9) Build ใหม่
+===============================================================================
+
+   cd C:\Users\mis\scripts\gpu-tool
+   build.bat          -> GpuToolbox.exe
+   build-test.bat     -> CoreTest.exe
+   build-demo.bat     -> GpuThrottleDemo.exe
+
+ ใช้ MSVC 14.50 จาก Visual Studio Community 2022 ที่ E:\Visual Studio
+ ถ้าย้าย VS ต้องแก้ตัวแปร VSPATH / VCVARS ในไฟล์ .bat
+
+ ตอน build จะเห็นบรรทัด "'vswhere.exe' is not recognized" -> ไม่ใช่ error
+ เป็น warning จากใน vcvars64.bat เอง build ผ่านปกติ
+ ดูบรรทัด [ok] built ท้ายสุดเป็นหลัก
+
+ ไม่ต้องมี CUDA Toolkit / nvml.h / nvml.lib
+ โค้ดโหลด nvml.dll ตอน runtime แล้ว GetProcAddress เอง
+
+
+===============================================================================
+ 10) สรุปสั้นๆ ว่าอะไรทำได้ อะไรทำไม่ได้
+===============================================================================
+
+ ทำได้จริง:
+   - ดู GPU util/temp/power/clock แบบ real-time
+   - หาว่า process ไหนกิน GPU ตอนไหน (Watch + log)
+   - เลือกว่า OBS จะรันบน GPU ตัวไหน
+   - ลด CPU/IO priority ของ background process (คืนค่าเดิมได้ถูกต้อง)
+   - throttle GPU workload ของโปรแกรมที่เราเขียนเอง
+
+ ทำไม่ได้ (ไม่ใช่ข้อจำกัดของเครื่องมือ แต่เป็นของ Windows/hardware):
+   - จำกัด GPU % ของ process อื่น        <- ไม่มี API รองรับเลย
+   - cap power บนการ์ดใบนี้               <- driver ปฏิเสธ
+   - ทำให้ dwm.exe ย้าย GPU ด้วย software <- ขึ้นกับสายจอเสียบที่ไหน
+   - แก้ปัญหาความร้อนด้วย software        <- เป็นปัญหา hardware
+
+===============================================================================
