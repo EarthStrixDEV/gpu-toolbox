@@ -10,6 +10,13 @@
 # source and must stay tracked - it is what makes the app require admin.
 *.exe.manifest
 
+# Compiled resource output (GpuToolbox.rc and .ico stay tracked).
+*.res
+
+# Packaged output from dist.bat - rebuildable, and the shortcut inside embeds
+# absolute paths from the machine that produced it.
+dist/
+
 # MSVC incremental build artifacts
 *.idb
 *.iobj

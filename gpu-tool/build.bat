@@ -40,12 +40,20 @@ REM  the exe. That manifest requests requireAdministrator, so Windows prompts
 REM  for elevation before the process starts. Embedding matters: a loose
 REM  .exe.manifest file next to the binary is ignored once the exe carries its
 REM  own, and is easy to lose when copying the exe elsewhere.
+REM  Compile the resource script first: it carries the application icon and the
+REM  version info shown in the file properties dialog.
+rc /nologo /fo GpuToolbox.res GpuToolbox.rc
+if errorlevel 1 (
+    echo [error] resource compile failed.
+    exit /b 1
+)
+
 REM  /MANIFESTUAC:NO is required, not optional: without it the linker emits its
 REM  own trustInfo block defaulting to asInvoker, which collides with the
 REM  requireAdministrator level in our manifest and fails the build with
 REM  "manifest authoring error c1010001: Values of attribute level not equal".
 cl /nologo /W4 /EHsc /O2 /std:c++17 /DUNICODE /D_UNICODE ^
-   GpuToolbox.cpp GpuCore.cpp ^
+   GpuToolbox.cpp GpuCore.cpp GpuToolbox.res ^
    /Fe:GpuToolbox.exe ^
    /link /SUBSYSTEM:WINDOWS ^
    /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:GpuToolbox.manifest
@@ -59,6 +67,7 @@ if errorlevel 1 (
 REM  Clean up the intermediate object files.
 if exist GpuToolbox.obj del GpuToolbox.obj
 if exist GpuCore.obj del GpuCore.obj
+if exist GpuToolbox.res del GpuToolbox.res
 
 echo.
 echo [ok] built: %~dp0GpuToolbox.exe

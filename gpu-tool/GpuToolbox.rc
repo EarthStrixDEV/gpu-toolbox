@@ -1,0 +1,41 @@
+// ===========================================================================
+//  Resource script - icon and version information.
+//
+//  Without an icon the exe shows the generic Windows application icon, which
+//  makes it hard to spot in a taskbar or on a desktop. Version info is what
+//  populates the Details tab of the file properties dialog.
+// ===========================================================================
+
+#include <windows.h>
+
+// Icon ID 1: Explorer and the taskbar use the lowest-numbered icon resource
+// as the application icon, so this must stay 1.
+1 ICON "GpuToolbox.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    1,1,0,0
+ PRODUCTVERSION 1,1,0,0
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_APP
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"        // US English, Unicode
+        BEGIN
+            VALUE "CompanyName",      "EarthStrix"
+            VALUE "FileDescription",  "GPU Toolbox - NVIDIA GPU diagnostics"
+            VALUE "FileVersion",      "1.1.0.0"
+            VALUE "InternalName",     "GpuToolbox"
+            VALUE "OriginalFilename", "GpuToolbox.exe"
+            VALUE "ProductName",      "GPU Toolbox"
+            VALUE "ProductVersion",   "1.1.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

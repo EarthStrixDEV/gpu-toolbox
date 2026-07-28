@@ -85,6 +85,26 @@ binary ตอน link ดังนั้น Windows จะขึ้น UAC ก�
 - `CoreTest.exe` ไม่ได้รับผลกระทบ ยังรันได้โดยไม่ต้อง admin จึงเหมาะกว่า
   สำหรับคำสั่งที่แค่อ่านค่าอย่าง `status` และ `list`
 
+## วิธีเปิดใช้งาน
+
+```
+cd gpu-tool
+dist.bat
+```
+
+`dist.bat` จะ build ทั้งสามโปรแกรมแล้วรวมไว้ในโฟลเดอร์ `dist/` พร้อมคู่มือ
+และ shortcut ที่สร้างไว้ให้ เปิดผ่าน `dist\GPU Toolbox.lnk` หรือดับเบิลคลิก
+`GpuToolbox.exe` ตรงๆ ก็ได้ — Windows จะขึ้น UAC ให้ทั้งสองทาง
+
+`dist/` เป็นชุดที่สมบูรณ์ในตัวเอง ตัว binary ผูกกับ Windows system DLL เท่านั้น
+(`COMCTL32`, `SHELL32`, `PDH`, `USER32`, `GDI32`, `ADVAPI32`, `KERNEL32`)
+บวกกับ `nvml.dll` ที่มากับ driver ของ NVIDIA จึงไม่ต้องติดตั้ง Visual C++
+redistributable ก๊อปโฟลเดอร์นี้ไปเครื่อง Windows เครื่องไหนที่มีการ์ด NVIDIA
+ก็รันได้ทันที
+
+หมายเหตุ: `dist/` ถูก git-ignore ไว้ เพราะ build ใหม่ได้เสมอ และ shortcut
+ข้างในเก็บ path แบบเต็มของเครื่องที่ build
+
 ## การ Build
 
 ```

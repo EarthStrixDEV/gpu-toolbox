@@ -86,6 +86,26 @@ Practical consequences:
 - `CoreTest.exe` is unaffected and still runs unelevated, which is why it
   remains the better choice for read-only checks like `status` and `list`.
 
+## Running it
+
+```
+cd gpu-tool
+dist.bat
+```
+
+`dist.bat` builds all three executables and packages them into `dist/` with the
+guide and a ready-made shortcut. Launch `dist\GPU Toolbox.lnk`, or double-click
+`GpuToolbox.exe` directly — Windows prompts for elevation either way.
+
+`dist/` is self-contained. The binaries link only against Windows system DLLs
+(`COMCTL32`, `SHELL32`, `PDH`, `USER32`, `GDI32`, `ADVAPI32`, `KERNEL32`) plus
+`nvml.dll` from the NVIDIA driver, so there is no Visual C++ redistributable to
+install. Copy the folder to any Windows machine with an NVIDIA card and it runs
+as-is.
+
+Note that `dist/` is git-ignored: it is rebuildable, and the shortcut inside it
+stores absolute paths from the machine that produced it.
+
 ## Building
 
 ```
