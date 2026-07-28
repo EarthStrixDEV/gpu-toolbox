@@ -1,5 +1,7 @@
 # GPU Toolbox
 
+**English** · [ภาษาไทย](README.th.md)
+
 Native Win32 tooling for diagnosing NVIDIA GPU load on Windows, plus an
 honest account of what GPU throttling can and cannot actually enforce.
 
